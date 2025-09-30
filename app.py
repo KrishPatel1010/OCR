@@ -6,6 +6,12 @@ import pytesseract
 from PIL import Image
 from flask import Flask, render_template, request, jsonify, flash, redirect, url_for
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+
+try:
+    from pdf2image import convert_from_path
+except Exception:
+    convert_from_path = None
 
 # Configure application
 app = Flask(__name__)
@@ -16,13 +22,40 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'pdf'}
 # Ensure upload directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Configure Tesseract path (update this path based on your installation)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Windows path
-# For Linux/Mac: pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+# Load env and configure Tesseract path
+load_dotenv()
+TESSERACT_CMD = os.getenv('TESSERACT_CMD')
+if TESSERACT_CMD and os.path.exists(TESSERACT_CMD):
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+else:
+    # Fall back to common defaults
+    if os.name == 'nt':
+        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    else:
+        pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+
+POPPLER_PATH = os.getenv('POPPLER_PATH')  # Optional, for Windows pdf2image
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+
+def save_pdf_first_page_as_image(pdf_path, output_dir):
+    """Convert first page of a PDF to an image and return the image path."""
+    if convert_from_path is None:
+        raise RuntimeError('pdf2image is not installed. Install it and try again.')
+    kwargs = {}
+    if POPPLER_PATH:
+        kwargs['poppler_path'] = POPPLER_PATH
+    # Convert first page at decent DPI for OCR
+    images = convert_from_path(pdf_path, dpi=300, first_page=1, last_page=1, **kwargs)
+    if not images:
+        raise RuntimeError('Could not render PDF page.')
+    base_name = os.path.splitext(os.path.basename(pdf_path))[0] + '_page1.png'
+    out_path = os.path.join(output_dir, base_name)
+    images[0].save(out_path, 'PNG')
+    return out_path
 
 def preprocess_image(image_path):
     """Enhanced preprocessing for various types of marksheets"""
@@ -406,8 +439,13 @@ def upload_file():
         file.save(file_path)
         
         try:
+            # If PDF, convert its first page to image for OCR
+            ext = filename.rsplit('.', 1)[1].lower()
+            target_image_path = file_path
+            if ext == 'pdf':
+                target_image_path = save_pdf_first_page_as_image(file_path, app.config['UPLOAD_FOLDER'])
             # Preprocess the image
-            processed_images = preprocess_image(file_path)
+            processed_images = preprocess_image(target_image_path)
             
             # Try OCR with different preprocessing methods
             ocr_results = []
@@ -442,7 +480,7 @@ def upload_file():
             
             # Try with original image
             try:
-                text = pytesseract.image_to_string(Image.open(file_path), lang='eng')
+                text = pytesseract.image_to_string(Image.open(target_image_path), lang='eng')
                 if text.strip():
                     ocr_results.append(text)
             except:
@@ -466,10 +504,10 @@ def upload_file():
             
         except Exception as e:
             flash(f'Error processing file: {str(e)}')
-            return redirect(request.url)
+            return redirect(url_for('index'))
     
     flash('File type not allowed')
-    return redirect(request.url)
+    return redirect(url_for('index'))
 
 @app.route('/api/extract', methods=['POST'])
 def api_extract():
@@ -487,8 +525,13 @@ def api_extract():
         file.save(file_path)
         
         try:
+            # If PDF, convert its first page to image for OCR
+            ext = filename.rsplit('.', 1)[1].lower()
+            target_image_path = file_path
+            if ext == 'pdf':
+                target_image_path = save_pdf_first_page_as_image(file_path, app.config['UPLOAD_FOLDER'])
             # Preprocess the image
-            processed_images = preprocess_image(file_path)
+            processed_images = preprocess_image(target_image_path)
             
             # Try OCR with different preprocessing methods
             ocr_results = []
@@ -523,7 +566,7 @@ def api_extract():
             
             # Try with original image
             try:
-                text = pytesseract.image_to_string(Image.open(file_path), lang='eng')
+                text = pytesseract.image_to_string(Image.open(target_image_path), lang='eng')
                 if text.strip():
                     ocr_results.append(text)
             except:
