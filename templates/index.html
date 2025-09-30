@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College TnP Portal - Marksheet OCR</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="text-center mb-0">College TnP Portal - Marksheet Scanner</h3>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages() %}
+                            {% if messages %}
+                                <div class="alert alert-danger">
+                                    <ul class="mb-0">
+                                        {% for message in messages %}
+                                            <li>{{ message }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <form action="/upload" method="post" enctype="multipart/form-data" class="mb-4">
+                            <div class="mb-3">
+                                <label for="marksheet" class="form-label">Upload Your Marksheet</label>
+                                <input type="file" class="form-control" id="marksheet" name="marksheet" accept=".jpg,.jpeg,.png,.pdf" required>
+                                <div class="form-text">Supported formats: JPG, JPEG, PNG, PDF</div>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary">Extract SPI/CPI</button>
+                            </div>
+                        </form>
+                        
+                        <div class="alert alert-info">
+                            <h5>Instructions:</h5>
+                            <ol>
+                                <li>Upload a clear, high-resolution scan or photo of your marksheet</li>
+                                <li>Ensure the SPI/CPI values are clearly visible</li>
+                                <li>Wait for the system to process and extract the information</li>
+                                <li>Verify the extracted information for accuracy</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
