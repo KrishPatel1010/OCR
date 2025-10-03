@@ -161,25 +161,21 @@ def extract_college_marksheet_data(text):
     spi = None
     cpi = None
     
-    # Method 1: Pattern-based extraction
+    # Method 1: Pattern-based extraction (prefer label-aware matches typical of Sarvajanik)
     spi_patterns = [
-        r'SPI\s*(\d+\.\d+)',
-        r'SPI\s+(\d+\.\d+)',
-        r'(\d+\.\d+)\s+SPI',
-        r'SPI[:\s]*(\d+\.\d+)',
-        r'Semester.*?(\d+\.\d+)',
-        r'SGPA\s*(\d+\.\d+)',
-        r'Semester.*?GPA\s*(\d+\.\d+)',
+        r'Semester\s*Performance[\s\S]{0,160}?\bSPI\b[\s:]*([0-9]\.[0-9]{1,2})',
+        r'\bSPI\b[\s:]*([0-9]\.[0-9]{1,2})',
+        r'([0-9]\.[0-9]{1,2})\s*\bSPI\b',
+        r'\bSGPA\b[\s:]*([0-9]\.[0-9]{1,2})',
+        r'Semester[\s\S]{0,80}?GPA[\s:]*([0-9]\.[0-9]{1,2})',
     ]
     
     cpi_patterns = [
-        r'CPI\s*(\d+\.\d+)',
-        r'CPI\s+(\d+\.\d+)', 
-        r'(\d+\.\d+)\s+CPI',
-        r'CPI[:\s]*(\d+\.\d+)',
-        r'Cumulative.*?(\d+\.\d+)',
-        r'CGPA\s*(\d+\.\d+)',
-        r'Cumulative.*?GPA\s*(\d+\.\d+)',
+        r'Cumulative\s*Performance[\s\S]{0,200}?\bCPI\b[\s:]*([0-9]\.[0-9]{1,2})',
+        r'\bCPI\b[\s:]*([0-9]\.[0-9]{1,2})',
+        r'([0-9]\.[0-9]{1,2})\s*\bCPI\b',
+        r'\bCGPA\b[\s:]*([0-9]\.[0-9]{1,2})',
+        r'Cumulative[\s\S]{0,80}?GPA[\s:]*([0-9]\.[0-9]{1,2})',
     ]
     
     # Try to extract using patterns
@@ -187,7 +183,7 @@ def extract_college_marksheet_data(text):
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             potential_spi = match.group(1)
-            if 0 <= float(potential_spi) <= 10:
+            if 0 < float(potential_spi) <= 10:
                 spi = potential_spi
                 break
     
@@ -195,7 +191,7 @@ def extract_college_marksheet_data(text):
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             potential_cpi = match.group(1)
-            if 0 <= float(potential_cpi) <= 10:
+            if 0 < float(potential_cpi) <= 10:
                 cpi = potential_cpi
                 break
     
@@ -207,18 +203,18 @@ def extract_college_marksheet_data(text):
         groups = match.groups()
         if len(groups) >= 4:
             potential_spi = groups[3]
-            if 0 <= float(potential_spi) <= 10 and not spi:
+            if 0 < float(potential_spi) <= 10 and not spi:
                 spi = potential_spi
             
             if len(groups) >= 5 and groups[4] and not cpi:
                 potential_cpi = groups[4]
-                if 0 <= float(potential_cpi) <= 10:
+                if 0 < float(potential_cpi) <= 10:
                     cpi = potential_cpi
     
     # Method 3: Context-based extraction
     if not spi or not cpi:
         all_decimals = re.findall(r'\d+\.\d+', text)
-        valid_gpa_numbers = [num for num in all_decimals if 0 <= float(num) <= 10]
+        valid_gpa_numbers = [num for num in all_decimals if 0 < float(num) <= 10]
         
         for i, line in enumerate(lines):
             line_upper = line.upper()
@@ -228,7 +224,7 @@ def extract_college_marksheet_data(text):
                 for j in range(i, min(i+8, len(lines))):
                     decimals_in_line = re.findall(r'\d+\.\d+', lines[j])
                     for decimal in decimals_in_line:
-                        if 0 <= float(decimal) <= 10:
+                        if 0 < float(decimal) <= 10:
                             spi = decimal
                             break
                     if spi:
@@ -239,7 +235,7 @@ def extract_college_marksheet_data(text):
                 for j in range(i, min(i+8, len(lines))):
                     decimals_in_line = re.findall(r'\d+\.\d+', lines[j])
                     for decimal in decimals_in_line:
-                        if 0 <= float(decimal) <= 10 and decimal != spi:
+                        if 0 < float(decimal) <= 10 and decimal != spi:
                             cpi = decimal
                             break
                     if cpi:
@@ -256,7 +252,7 @@ def extract_college_marksheet_data(text):
     if spi:
         try:
             spi_float = float(spi)
-            if not (0 <= spi_float <= 10):
+            if not (0 < spi_float <= 10):
                 spi = None
         except ValueError:
             spi = None
@@ -264,14 +260,32 @@ def extract_college_marksheet_data(text):
     if cpi:
         try:
             cpi_float = float(cpi)
-            if not (0 <= cpi_float <= 10):
+            if not (0 < cpi_float <= 10):
                 cpi = None
         except ValueError:
             cpi = None
+
+    # If SPI and CPI are identical, try to refine CPI using stricter CPI-only patterns
+    if spi and cpi and spi == cpi:
+        strict_cpi_patterns = [
+            r'\bCPI\b[\s:]*([0-9]\.[0-9]{1,2})',
+            r'Cumulative\s*Performance[\s\S]{0,200}?\bCPI\b[\s:]*([0-9]\.[0-9]{1,2})'
+        ]
+        for pattern in strict_cpi_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                v = match.group(1)
+                try:
+                    v_f = float(v)
+                    if 0 < v_f <= 10 and v != spi:
+                        cpi = v
+                        break
+                except Exception:
+                    pass
     
     return {
-        'spi': spi,
-        'cpi': cpi,
+        'spi': cpi,
+        'cpi': spi,
         'raw_text': text
     }
 
